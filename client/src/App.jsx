@@ -38,7 +38,12 @@ function parseCSV(csvContent) {
       if (header === 'name') player.name = value
       else if (header === 'baseprice') player.basePrice = Number(value)
       else if (header === 'overseas') player.overseas = value.toLowerCase() === 'true'
-      else if (header === 'type') player.type = value.toLowerCase()
+      else if (header === 'type') {
+        let type = value.toLowerCase()
+        // Convert 'batsman' to 'batter' for backwards compatibility
+        if (type === 'batsman') type = 'batter'
+        player.type = type
+      }
       else if (header === 'value') player.value = Number(value)
     })
     players.push(player)
@@ -94,7 +99,7 @@ export default function App() {
       setTeamState(prev => {
         const next = { ...prev }; const t = { ...next[team] };
         if (player.overseas) t.overseas -= 1;
-        if (player.type === 'batsman') t.batters -= 1;
+        if (player.type === 'batter') t.batters -= 1;
         else if (player.type === 'bowler') t.bowlers -= 1;
         else if (player.type === 'all-rounder') {
           if (t.batters > 0) t.batters -= 1; if (t.bowlers > 0) t.bowlers -= 1;
@@ -126,7 +131,7 @@ export default function App() {
         const t = { ...next[toUndo.team] };
         const p = toUndo.player;
         if (p.overseas) t.overseas += 1;
-        if (p.type === 'batsman') t.batters += 1;
+        if (p.type === 'batter') t.batters += 1;
         else if (p.type === 'bowler') t.bowlers += 1;
         else if (p.type === 'all-rounder') { t.batters += 1; t.bowlers += 1; }
         t.totalValue -= p.value;
@@ -153,11 +158,12 @@ export default function App() {
     teams.forEach(team => {
       const squad = assignments.filter(a => a.team === team);
       const spent = squad.reduce((s, a) => s + a.price, 0);
-      doc.text(`${team} (Spent: ₹${spent}Cr)`, 14, yPos);
+      const totalValue = squad.reduce((s, a) => s + a.player.value, 0);
+      doc.text(`${team} (Squad Size: ${squad.length}/${TOTAL_PLAYER_SLOTS} | Spent: Rs.${spent}Cr | Total Value: ${totalValue})`, 14, yPos);
       autoTable(doc, {
         startY: yPos + 2,
-        head: [['Player', 'Type', 'Price']],
-        body: squad.map(s => [s.player.name, s.player.type, `₹${s.price}Cr`]),
+        head: [['#', 'Player', 'Type', 'Price', 'Value', 'Overseas']],
+        body: squad.map((s, index) => [index + 1, s.player.name, s.player.type, `Rs.${s.price}Cr`, s.player.value, s.player.overseas ? 'Yes' : 'No']),
       });
       yPos = doc.lastAutoTable.finalY + 10;
     });
@@ -218,8 +224,11 @@ export default function App() {
                   
                   const canAddOverseas = !currentPlayer.overseas || teamState[t].overseas > 0;
                   
+                  // Check if team has reached player quota
+                  const quotaFulfilled = teamAssignments.length >= TOTAL_PLAYER_SLOTS;
+                  
                   // Count current players by type
-                  const battersBought = teamAssignments.filter(a => a.player.type === 'batsman').length;
+                  const battersBought = teamAssignments.filter(a => a.player.type === 'batter').length;
                   const bowlersBought = teamAssignments.filter(a => a.player.type === 'bowler').length;
                   const allrounders = teamAssignments.filter(a => a.player.type === 'all-rounder').length;
                   const totalBought = teamAssignments.length;
@@ -230,12 +239,12 @@ export default function App() {
                   
                   const slotsAfterThisPlayer = TOTAL_PLAYER_SLOTS - (totalBought + 1);
                   
-                  if (currentPlayer.type === 'batsman') {
-                    // When buying a batsman, check if remaining slots are enough for bowlers still needed
+                  if (currentPlayer.type === 'batter') {
+                    // When buying a batter, check if remaining slots are enough for bowlers still needed
                     const bowlersDeficiency = Math.max(0, MIN_BOWLERS - (bowlersBought + allrounders));
                     if (bowlersDeficiency > slotsAfterThisPlayer) {
                       canMeetMinimums = false;
-                      minimumError = `❌ Cannot Meet Minimums!\nAfter buying this batsman, you'll have room for only ${slotsAfterThisPlayer} more players.\nYou still need ${bowlersDeficiency} more bowlers.`;
+                      minimumError = `❌ Cannot Meet Minimums!\nAfter buying this batter, you'll have room for only ${slotsAfterThisPlayer} more players.\nYou still need ${bowlersDeficiency} more bowlers.`;
                     }
                   } else if (currentPlayer.type === 'bowler') {
                     // When buying a bowler, check if remaining slots are enough for batsmen still needed
@@ -254,11 +263,12 @@ export default function App() {
                     }
                   }
                   
-                  const canBid = canAfford && canAddOverseas && canMeetMinimums;
+                  const canBid = canAfford && canAddOverseas && canMeetMinimums && !quotaFulfilled;
                   
                   return (
                     <button key={t} onClick={() => {
                       if(!price) return alert("Price?");
+                      if(quotaFulfilled) return alert(`❌ Squad Complete!\n${t} has already signed ${TOTAL_PLAYER_SLOTS} players.\nTheir squad is now full and cannot accept any more players.`);
                       if(!canAfford) return alert(`❌ Insufficient Budget!\n${t} has only ₹${remainingBudget}Cr left\nYou bid: ₹${bidPrice}Cr`);
                       if(!canAddOverseas) return alert(`❌ Overseas Limit Exceeded!\n${t} can have maximum ${MAX_OVERSEAS} overseas players\nThey've already reached the limit.`);
                       if(!canMeetMinimums) return alert(minimumError);
@@ -320,7 +330,7 @@ export default function App() {
               <div style={{fontSize: '14px', lineHeight: '1.8'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Purse Left:</span> <strong style={{color: '#2ecc71'}}>₹{(teamState[team].purse - spent).toFixed(2)}Cr</strong></div>
                 <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Total Value:</span> <strong style={{color: '#f39c12'}}>{teamState[team].totalValue}</strong></div>
-                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Batsmen Needed:</span> <strong>{Math.max(0, teamState[team].batters)}</strong></div>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Batters Needed:</span> <strong>{Math.max(0, teamState[team].batters)}</strong></div>
                 <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Bowlers Needed:</span> <strong>{Math.max(0, teamState[team].bowlers)}</strong></div>
                 <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Overseas Left:</span> <strong>{Math.max(0, teamState[team].overseas)}</strong></div>
               </div>
