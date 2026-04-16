@@ -1,15 +1,15 @@
-name,basePrice,overseas,type,value
+name,basePrice,batsman,type,value
 Virat Kohli,2,false,batsman,25
 Rohit Sharma,2,false,batsman,20
-Jasprit Bumrah,2,false,bowler,20
+Jasprit Bumrah,2,false,batsman,20
 AB de Villiers,1.5,true,batsman,20
-Rashid Khan,1.5,true,all-rounder,15
-Hardik Pandya,1.5,false,all-rounder,18
-Yuzvendra Chahal,0.5,false,bowler,12
+Rashid Khan,1.5,true,batsman,15
+Hardik Pandya,1.5,false,batsman,18
+Yuzvendra Chahal,0.5,false,batsman,12
 Suryakumar Yadav,1.5,false,batsman,16
-Ravindra Jadeja,2,false,all-rounder,19
+Ravindra Jadeja,2,false,batsman,19
 KL Rahul,1.5,false,batsman,17
-Pat Cummins,1.5,true,bowler,14
+Pat Cummins,1.5,true,batsman,14
 David Warner,1.5,true,batsman,15
 Steve Smith,2,true,batsman,22
 Glenn Maxwell,1.5,true,batsman,13

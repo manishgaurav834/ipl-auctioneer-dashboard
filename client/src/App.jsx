@@ -2,19 +2,27 @@ import { useState, useEffect } from 'react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
+// ===== AUCTION CONFIGURATION VARIABLES =====
+const INITIAL_PURSE = 120           // Budget per team in Crores
+const TOTAL_PLAYER_SLOTS = 15       // Max players per team
+const MIN_BATSMEN = 7               // Minimum batsmen required
+const MIN_BOWLERS = 4               // Minimum bowlers required
+const MAX_OVERSEAS = 5              // Maximum overseas players allowed
+// ============================================
+
 const teams = ['RCB', 'LSG', 'GT', 'KKR', 'SRH', 'DC', 'RR', 'PBKS', 'CSK', 'MI']
 
 const teamInitialState = {
-  MI: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  CSK: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  RCB: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  KKR: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  SRH: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  DC: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  RR: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  PBKS: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  LSG: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
-  GT: { purse: 120, totalPlayers: 15, batters: 7, bowlers: 4, foreigners: 5 },
+  MI: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  CSK: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  RCB: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  KKR: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  SRH: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  DC: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  RR: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  PBKS: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  LSG: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
+  GT: { purse: INITIAL_PURSE, totalPlayers: TOTAL_PLAYER_SLOTS, batters: MIN_BATSMEN, bowlers: MIN_BOWLERS, overseas: MAX_OVERSEAS, totalValue: 0 },
 }
 
 function parseCSV(csvContent) {
@@ -29,7 +37,7 @@ function parseCSV(csvContent) {
       const value = values[index]
       if (header === 'name') player.name = value
       else if (header === 'baseprice') player.basePrice = Number(value)
-      else if (header === 'foreigner') player.foreigner = value.toLowerCase() === 'true'
+      else if (header === 'overseas') player.overseas = value.toLowerCase() === 'true'
       else if (header === 'type') player.type = value.toLowerCase()
       else if (header === 'value') player.value = Number(value)
     })
@@ -41,7 +49,21 @@ function parseCSV(csvContent) {
 export default function App() {
   const getSaved = (key, defaultValue) => {
     const saved = localStorage.getItem(key);
-    return saved !== null ? JSON.parse(saved) : defaultValue;
+    if (saved === null) return defaultValue;
+    
+    const parsed = JSON.parse(saved);
+    
+    // Migration: Convert old 'foreigners' property to 'overseas'
+    if (key === 'teamState' && parsed) {
+      for (let team in parsed) {
+        if (parsed[team].foreigners !== undefined && parsed[team].overseas === undefined) {
+          parsed[team].overseas = parsed[team].foreigners;
+          delete parsed[team].foreigners;
+        }
+      }
+    }
+    
+    return parsed;
   };
 
   const [auctionStarted, setAuctionStarted] = useState(() => getSaved('auctionStarted', false))
@@ -71,12 +93,13 @@ export default function App() {
     if (team !== 'Unsold') {
       setTeamState(prev => {
         const next = { ...prev }; const t = { ...next[team] };
-        if (player.foreigner) t.foreigners -= 1;
+        if (player.overseas) t.overseas -= 1;
         if (player.type === 'batsman') t.batters -= 1;
         else if (player.type === 'bowler') t.bowlers -= 1;
         else if (player.type === 'all-rounder') {
           if (t.batters > 0) t.batters -= 1; if (t.bowlers > 0) t.bowlers -= 1;
         }
+        t.totalValue += player.value;
         next[team] = t; return next;
       });
     }
@@ -102,10 +125,11 @@ export default function App() {
         const next = { ...prev };
         const t = { ...next[toUndo.team] };
         const p = toUndo.player;
-        if (p.foreigner) t.foreigners += 1;
+        if (p.overseas) t.overseas += 1;
         if (p.type === 'batsman') t.batters += 1;
         else if (p.type === 'bowler') t.bowlers += 1;
         else if (p.type === 'all-rounder') { t.batters += 1; t.bowlers += 1; }
+        t.totalValue -= p.value;
         next[toUndo.team] = t;
         return next;
       });
@@ -177,19 +201,75 @@ export default function App() {
           {currentPlayer ? (
             <div style={{border: '1px solid #3498db', padding: '25px', borderRadius: '12px', backgroundColor: '#141414'}}>
               <h1 style={{margin: '0 0 10px 0', fontSize: '36px'}}>{currentPlayer.name}</h1>
-              <p style={{fontSize: '18px', color: '#bbb'}}>Base: ₹{currentPlayer.basePrice} Cr | Type: {currentPlayer.type}</p>
+              <p style={{fontSize: '18px', color: '#bbb'}}>Base: ₹{currentPlayer.basePrice} Cr | Type: {currentPlayer.type} | {currentPlayer.overseas ? '🌍 Overseas' : '🏠 Domestic'}</p>
+              <p style={{fontSize: '16px', color: '#f39c12', marginBottom: '15px'}}>Player Value: <strong>{currentPlayer.value}</strong></p>
               <input 
                 type="number" placeholder="Price (Cr)" value={price} 
                 onChange={e => setPrice(e.target.value)} 
                 style={{padding: '15px', width: '90%', margin: '20px 0', borderRadius: '8px', backgroundColor: '#222', color: 'white', border: '1px solid #444'}}
               />
               <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
-                {teams.map(t => (
-                  <button key={t} onClick={() => {if(!price) return alert("Price?"); setPendingAssignment({player: currentPlayer, team: t, price: Number(price)}); setShowConfirmation(true);}}
-                    style={{padding: '10px 15px', borderRadius: '6px', border: '1px solid #3498db', backgroundColor: 'transparent', color: '#3498db', fontWeight: 'bold', cursor: 'pointer'}}>
-                    {t}
-                  </button>
-                ))}
+                {teams.map(t => {
+                  const bidPrice = Number(price);
+                  const teamAssignments = assignments.filter(a => a.team === t);
+                  const spent = teamAssignments.reduce((s, a) => s + a.price, 0);
+                  const remainingBudget = teamState[t].purse - spent;
+                  const canAfford = bidPrice <= remainingBudget;
+                  
+                  const canAddOverseas = !currentPlayer.overseas || teamState[t].overseas > 0;
+                  
+                  // Count current players by type
+                  const battersBought = teamAssignments.filter(a => a.player.type === 'batsman').length;
+                  const bowlersBought = teamAssignments.filter(a => a.player.type === 'bowler').length;
+                  const allrounders = teamAssignments.filter(a => a.player.type === 'all-rounder').length;
+                  const totalBought = teamAssignments.length;
+                  
+                  // Check if adding this player violates the minimum requirements
+                  let canMeetMinimums = true;
+                  let minimumError = '';
+                  
+                  const slotsAfterThisPlayer = TOTAL_PLAYER_SLOTS - (totalBought + 1);
+                  
+                  if (currentPlayer.type === 'batsman') {
+                    // When buying a batsman, check if remaining slots are enough for bowlers still needed
+                    const bowlersDeficiency = Math.max(0, MIN_BOWLERS - (bowlersBought + allrounders));
+                    if (bowlersDeficiency > slotsAfterThisPlayer) {
+                      canMeetMinimums = false;
+                      minimumError = `❌ Cannot Meet Minimums!\nAfter buying this batsman, you'll have room for only ${slotsAfterThisPlayer} more players.\nYou still need ${bowlersDeficiency} more bowlers.`;
+                    }
+                  } else if (currentPlayer.type === 'bowler') {
+                    // When buying a bowler, check if remaining slots are enough for batsmen still needed
+                    const batsmenDeficiency = Math.max(0, MIN_BATSMEN - (battersBought + allrounders));
+                    if (batsmenDeficiency > slotsAfterThisPlayer) {
+                      canMeetMinimums = false;
+                      minimumError = `❌ Cannot Meet Minimums!\nAfter buying this bowler, you'll have room for only ${slotsAfterThisPlayer} more players.\nYou still need ${batsmenDeficiency} more batsmen.`;
+                    }
+                  } else if (currentPlayer.type === 'all-rounder') {
+                    // When buying an all-rounder, it helps both requirements
+                    const batsmenDeficiency = Math.max(0, MIN_BATSMEN - (battersBought + allrounders + 1));
+                    const bowlersDeficiency = Math.max(0, MIN_BOWLERS - (bowlersBought + allrounders + 1));
+                    if (batsmenDeficiency + bowlersDeficiency > slotsAfterThisPlayer) {
+                      canMeetMinimums = false;
+                      minimumError = `❌ Cannot Meet Minimums!\nAfter buying this all-rounder, you'll have room for only ${slotsAfterThisPlayer} more players.\nYou still need ${batsmenDeficiency} batsmen and ${bowlersDeficiency} bowlers.`;
+                    }
+                  }
+                  
+                  const canBid = canAfford && canAddOverseas && canMeetMinimums;
+                  
+                  return (
+                    <button key={t} onClick={() => {
+                      if(!price) return alert("Price?");
+                      if(!canAfford) return alert(`❌ Insufficient Budget!\n${t} has only ₹${remainingBudget}Cr left\nYou bid: ₹${bidPrice}Cr`);
+                      if(!canAddOverseas) return alert(`❌ Overseas Limit Exceeded!\n${t} can have maximum ${MAX_OVERSEAS} overseas players\nThey've already reached the limit.`);
+                      if(!canMeetMinimums) return alert(minimumError);
+                      setPendingAssignment({player: currentPlayer, team: t, price: bidPrice}); 
+                      setShowConfirmation(true);
+                    }}
+                      style={{padding: '10px 15px', borderRadius: '6px', border: canBid ? '1px solid #3498db' : '1px solid #e74c3c', backgroundColor: 'transparent', color: canBid ? '#3498db' : '#e74c3c', fontWeight: 'bold', cursor: canBid ? 'pointer' : 'not-allowed', opacity: canBid ? 1 : 0.5}}>
+                      {t}
+                    </button>
+                  );
+                })}
                 <button onClick={() => {setPendingAssignment({player: currentPlayer, team: 'Unsold', price: 0}); setShowConfirmation(true)}}
                   style={{padding: '10px 15px', borderRadius: '6px', backgroundColor: '#444', color: 'white', width: '100%', marginTop: '10px'}}>
                   Mark Unsold
@@ -236,12 +316,13 @@ export default function App() {
           const spent = teamAssignments.reduce((s, a) => s + a.price, 0);
           return (
             <div key={team} style={{border: '1px solid #222', padding: '20px', borderRadius: '12px', backgroundColor: '#141414'}}>
-              <h3 style={{margin: '0 0 10px 0', color: '#3498db'}}>{team} <span style={{fontSize: '12px', color: '#777'}}>({teamAssignments.length}/15)</span></h3>
+              <h3 style={{margin: '0 0 10px 0', color: '#3498db'}}>{team} <span style={{fontSize: '12px', color: '#777'}}>({teamAssignments.length}/{TOTAL_PLAYER_SLOTS})</span></h3>
               <div style={{fontSize: '14px', lineHeight: '1.8'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Purse:</span> <strong style={{color: '#2ecc71'}}>₹{(teamState[team].purse - spent).toFixed(2)}Cr</strong></div>
-                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Batters:</span> <strong>{teamState[team].batters}</strong></div>
-                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Bowlers:</span> <strong>{teamState[team].bowlers}</strong></div>
-                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Foreign:</span> <strong>{teamState[team].foreigners}</strong></div>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Purse Left:</span> <strong style={{color: '#2ecc71'}}>₹{(teamState[team].purse - spent).toFixed(2)}Cr</strong></div>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Total Value:</span> <strong style={{color: '#f39c12'}}>{teamState[team].totalValue}</strong></div>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Batsmen Needed:</span> <strong>{Math.max(0, teamState[team].batters)}</strong></div>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Bowlers Needed:</span> <strong>{Math.max(0, teamState[team].bowlers)}</strong></div>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Overseas Left:</span> <strong>{Math.max(0, teamState[team].overseas)}</strong></div>
               </div>
             </div>
           )
